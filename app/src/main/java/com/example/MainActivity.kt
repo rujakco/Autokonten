@@ -6,6 +6,9 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -333,9 +336,26 @@ fun OtoStudioDashboard(viewModel: OtoViewModel) {
 // ==========================================================
 @Composable
 fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    val listState = remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var rawText by remember { mutableStateOf("") }
+    val isImportingProducts by viewModel.isImportingProducts.collectAsStateWithLifecycle()
+    val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            try {
+                context.contentResolver.openInputStream(it)?.use { inputStream ->
+                    val text = inputStream.bufferedReader().use { reader -> reader.readText() }
+                    rawText = text
+                    Toast.makeText(context, "Berhasil memuat file teks! Silakan klik 'Mulai Ekstrak AI' untuk memproses.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Gagal membaca file: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -352,7 +372,7 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                 color = Color.White
             )
             Text(
-                text = "Masukkan deskripsi atau copy-paste data produk Anda. AI akan menyerap data ini sebagai basis pengetahuan untuk seluruh konten harian.",
+                text = "Tempel teks deskripsi produk/jasa Anda atau unggah file .txt. Agen AI akan memilah, merapikan, dan mengekstrak informasi produk secara otomatis untuk basis promosi harian.",
                 fontSize = 12.sp,
                 color = Color.LightGray,
                 modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
@@ -368,42 +388,39 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Input Informasi Produk",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = StudioAccent
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text("Nama Produk / Jasa") },
-                        placeholder = { Text("Contoh: Kopi Susu Gula Aren Botolan") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("product_title_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = StudioAccent,
-                            unfocusedBorderColor = CardBorderColor,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedLabelColor = StudioAccent
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Unggah atau Copy-Paste Informasi Produk",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = StudioAccent
                         )
-                    )
+                        
+                        if (isImportingProducts) {
+                            CircularProgressIndicator(
+                                color = StudioAccent,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        label = { Text("Deskripsi Detail / Fitur / Harga / Nilai Jual") },
-                        placeholder = { Text("Contoh: Premium quality Gula Aren, terbuat dari 100% Arabika Gayo, tanpa pengawet, botol 1 liter...") },
+                        value = rawText,
+                        onValueChange = { rawText = it },
+                        label = { Text("Konten Deskripsi Produk") },
+                        placeholder = { 
+                            Text("Tempel teks deskripsi produk di sini atau unggah file .txt...\n\nAnda dapat menempel rincian spesifikasi beberapa produk sekaligus. AI akan memilahnya secara cerdas.") 
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp)
-                            .testTag("product_description_input"),
+                            .height(200.dp)
+                            .testTag("product_raw_text_input"),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = StudioAccent,
                             unfocusedBorderColor = CardBorderColor,
@@ -411,41 +428,93 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                             unfocusedTextColor = Color.White,
                             focusedLabelColor = StudioAccent
                         ),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+                        enabled = !isImportingProducts
                     )
+                    
+                    if (isImportingProducts) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            CircularProgressIndicator(
+                                color = StudioGold,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = importProgress,
+                                fontSize = 12.sp,
+                                color = StudioGold,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        // File picker button
                         Button(
-                            onClick = { viewModel.setupSampleProduct() },
+                            onClick = { filePickerLauncher.launch("text/plain") },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                             modifier = Modifier
-                                .border(1.dp, StudioPrimary, RoundedCornerShape(8.dp))
-                                .testTag("load_sample_product_button"),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                .weight(1.5f)
+                                .border(1.dp, StudioAccent, RoundedCornerShape(8.dp))
+                                .testTag("upload_txt_file_button"),
+                            enabled = !isImportingProducts,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                         ) {
-                            Text("Muat Contoh Kopi ☕", color = StudioPrimary, fontSize = 12.sp)
+                            Icon(Icons.Default.List, contentDescription = "Pilih File", tint = StudioAccent, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Pilih File .txt", color = StudioAccent, fontSize = 11.sp)
                         }
 
+                        // Process with AI button
                         Button(
                             onClick = {
-                                if (title.isNotBlank() && description.isNotBlank()) {
-                                    viewModel.insertProduct(title, description)
-                                    title = ""
-                                    description = ""
+                                if (rawText.isNotBlank()) {
+                                    viewModel.parseAndInsertRawProducts(rawText) { count ->
+                                        if (count > 0) {
+                                            rawText = ""
+                                            Toast.makeText(context, "Berhasil mengimpor $count produk! ✨", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            Toast.makeText(context, "Gagal mengimpor produk. Coba periksa teks Anda.", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Harap tempel teks atau unggah file .txt terlebih dahulu!", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = StudioPrimary),
                             modifier = Modifier
+                                .weight(1.5f)
                                 .clip(RoundedCornerShape(8.dp))
-                                .testTag("add_product_button")
+                                .testTag("add_product_button"),
+                            enabled = !isImportingProducts && rawText.isNotBlank(),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Simpan", tint = Color.White)
+                            Icon(Icons.Default.Star, contentDescription = "Simpan", tint = Color.White, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Simpan Produk", color = Color.White)
+                            Text("Mulai Ekstrak AI", color = Color.White, fontSize = 11.sp)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // Button to load sample if database is empty
+                    if (assets.isEmpty()) {
+                        TextButton(
+                            onClick = { viewModel.setupSampleProduct() },
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .testTag("load_sample_product_button")
+                        ) {
+                            Text("Atau muat contoh produk cepat ☕", color = StudioPrimary, fontSize = 11.sp)
                         }
                     }
                 }

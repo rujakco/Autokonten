@@ -36,6 +36,12 @@ class OtoViewModel(application: Application, private val repository: OtoReposito
     private val _generationProgress = MutableStateFlow("")
     val generationProgress: StateFlow<String> = _generationProgress.asStateFlow()
 
+    private val _isImportingProducts = MutableStateFlow(false)
+    val isImportingProducts: StateFlow<Boolean> = _isImportingProducts.asStateFlow()
+
+    private val _importProgress = MutableStateFlow("")
+    val importProgress: StateFlow<String> = _importProgress.asStateFlow()
+
     private val _selectedPlatformFilter = MutableStateFlow("TIKTOK")
     val selectedPlatformFilter: StateFlow<String> = _selectedPlatformFilter.asStateFlow()
 
@@ -49,6 +55,104 @@ class OtoViewModel(application: Application, private val repository: OtoReposito
             if (title.isBlank() || description.isBlank()) return@launch
             repository.insertAsset(ProductAsset(title = title, description = description, imageUri = imageUri))
             repository.insertLog(AgentLog("System", "Produk baru ditambahkan ke basis pengetahuan.", "Judul: $title"))
+        }
+    }
+
+    // Parse and extract multiple products using Gemini API
+    fun parseAndInsertRawProducts(rawText: String, onComplete: (Int) -> Unit) {
+        viewModelScope.launch {
+            val trimmedText = rawText.trim()
+            if (trimmedText.isBlank()) {
+                onComplete(0)
+                return@launch
+            }
+            _isImportingProducts.value = true
+            _importProgress.value = "AI sedang mengekstrak produk..."
+            repository.insertLog(AgentLog("Product Analyzer 🤖", "Mulai memproses data masukan produk mentah.", "Panjang: ${trimmedText.length} karakter."))
+
+            val systemInstruction = """
+                Anda adalah AI Product Extraction Agent yang handal. Tugas Anda adalah membaca, menganalisis, dan mengekstrak informasi produk dari sebuah teks mentah/acak (seperti hasil copy-paste website, catatan, brosur, atau file deskripsi).
+                Anda dapat mengekstrak satu atau beberapa produk sekaligus jika teks berisi detail dari beberapa produk berbeda.
+                
+                Tuliskan setiap produk yang berhasil diekstrak dalam format tag [PRODUCT] ... [END_PRODUCT] berikut secara ketat:
+                
+                [PRODUCT]
+                Nama: <Nama singkat produk atau jasa>
+                Deskripsi: <Deskripsi detail produk, nilai jual utama, kelebihan, spesifikasi, harga jika ada, dll.>
+                [END_PRODUCT]
+                
+                Pastikan Anda hanya menggunakan data asli dari teks yang diberikan. Jangan mengada-ada informasi yang tidak ada dalam teks. Jika teks sangat acak, bersihkan dan susun ke dalam Nama dan Deskripsi yang rapi.
+            """.trimIndent()
+
+            try {
+                val resultText = com.example.api.GeminiClient.generateContent(
+                    prompt = trimmedText,
+                    systemInstruction = systemInstruction
+                )
+
+                var count = 0
+                if (resultText.contains("[PRODUCT]") && resultText.contains("[END_PRODUCT]")) {
+                    val blocks = resultText.split("[PRODUCT]")
+                    for (block in blocks) {
+                        if (!block.contains("[END_PRODUCT]")) continue
+                        val content = block.substringBefore("[END_PRODUCT]").trim()
+                        var nama = ""
+                        var deskripsi = ""
+
+                        val lines = content.lines()
+                        var currentField = ""
+                        val descBuilder = StringBuilder()
+
+                        for (line in lines) {
+                            val trimmedLine = line.trim()
+                            if (trimmedLine.startsWith("Nama:")) {
+                                nama = trimmedLine.substringAfter("Nama:").trim()
+                            } else if (trimmedLine.startsWith("Deskripsi:")) {
+                                currentField = "deskripsi"
+                                descBuilder.clear()
+                                descBuilder.append(trimmedLine.substringAfter("Deskripsi:").trim())
+                            } else {
+                                if (currentField == "deskripsi") {
+                                    descBuilder.append("\n").append(line)
+                                }
+                            }
+                        }
+
+                        if (currentField == "deskripsi") {
+                            deskripsi = descBuilder.toString().trim()
+                        }
+
+                        if (nama.isNotBlank() && deskripsi.isNotBlank()) {
+                            repository.insertAsset(ProductAsset(title = nama, description = deskripsi))
+                            repository.insertLog(AgentLog("Product Analyzer 🤖", "Berhasil mengekstrak produk dari teks mentah.", "Produk: $nama"))
+                            count++
+                        }
+                    }
+                }
+
+                if (count > 0) {
+                    repository.insertLog(AgentLog("System", "Selesai memproses impor batch produk.", "$count produk berhasil ditambahkan."))
+                    onComplete(count)
+                } else {
+                    // Fallback to single product parsing if AI failed to format or returned unparseable text
+                    _importProgress.value = "AI tidak mendeteksi format multi-produk, mengimpor sebagai produk tunggal..."
+                    val firstLine = trimmedText.lines().firstOrNull()?.take(50) ?: "Produk Impor Tanpa Nama"
+                    val title = firstLine.removeSuffix(":").removeSuffix("-").trim()
+                    repository.insertAsset(ProductAsset(title = title, description = trimmedText))
+                    repository.insertLog(AgentLog("Product Analyzer 🤖", "Impor cadangan (produk tunggal) selesai.", "Produk: $title"))
+                    onComplete(1)
+                }
+            } catch (e: Exception) {
+                // Total fallback in case of no network or general error
+                val firstLine = trimmedText.lines().firstOrNull()?.take(50) ?: "Produk Impor Tanpa Nama"
+                val title = firstLine.removeSuffix(":").removeSuffix("-").trim()
+                repository.insertAsset(ProductAsset(title = title, description = trimmedText))
+                repository.insertLog(AgentLog("Product Analyzer 🤖", "Terjadi error AI, teks dimasukkan sebagai satu produk.", "Error: ${e.message}"))
+                onComplete(1)
+            } finally {
+                _isImportingProducts.value = false
+                _importProgress.value = ""
+            }
         }
     }
 
