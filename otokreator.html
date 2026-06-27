@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OtoKreator AI</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #1a1a1a; max-width: 600px; margin: auto; padding: 16px; }
+        .header { text-align: center; padding: 24px 0; }
+        .header h1 { font-size: 1.6rem; margin-bottom: 4px; }
+        .header p { color: #666; font-size: 0.9rem; }
+        .api-section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .api-section input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; }
+        .api-section small { color: #888; display: block; margin-top: 6px; }
+        .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        .menu button { padding: 14px; border: none; background: #1a73e8; color: #fff; border-radius: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 500; }
+        .menu button:active { background: #1558b0; }
+        .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .card h3 { margin-bottom: 12px; }
+        .card input, .card textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; font-size: 0.9rem; }
+        .card button { width: 100%; padding: 12px; background: #1a73e8; color: #fff; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; }
+        .card button:disabled { background: #a0c4f1; cursor: not-allowed; }
+        .result { background: #f0f4ff; padding: 12px; border-radius: 8px; margin-top: 10px; white-space: pre-wrap; font-size: 0.9rem; }
+        .error { background: #ffeaea; padding: 12px; border-radius: 8px; color: #c00; margin-top: 10px; }
+        .draft-item { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .draft-item span { background: #e0e7ff; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem; color: #1a73e8; }
+        .back-btn { background: none; border: none; color: #1a73e8; font-size: 0.9rem; cursor: pointer; margin-bottom: 12px; }
+        .hidden { display: none; }
+        .loading { text-align: center; padding: 20px; color: #666; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🤖 OtoKreator AI</h1>
+        <p>Caption · Tren · Visual</p>
+    </div>
+
+    <!-- API Key -->
+    <div class="api-section">
+        <input type="password" id="apiKeyInput" placeholder="Masukkan Gemini API Key">
+        <small>Dapatkan gratis di <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a></small>
+    </div>
+
+    <!-- Menu Utama -->
+    <div id="homeScreen" class="menu">
+        <button onclick="showScreen('caption')">📝 Buat Caption</button>
+        <button onclick="showScreen('trend')">📈 Riset Tren</button>
+        <button onclick="showScreen('visual')">🎨 Ide Visual</button>
+        <button onclick="showScreen('drafts')">📂 Draft Tersimpan</button>
+    </div>
+
+    <!-- Screen: Caption -->
+    <div id="captionScreen" class="card hidden">
+        <button class="back-btn" onclick="showScreen('home')">← Kembali</button>
+        <h3>Buat Caption</h3>
+        <input type="text" id="captionInput" placeholder="Topik (contoh: kopi pagi)">
+        <button id="captionBtn" onclick="generate('caption')">Generate Caption</button>
+        <div id="captionResult"></div>
+        <button id="captionSaveBtn" class="hidden" onclick="saveDraft('caption')">Simpan ke Draft</button>
+    </div>
+
+    <!-- Screen: Tren -->
+    <div id="trendScreen" class="card hidden">
+        <button class="back-btn" onclick="showScreen('home')">← Kembali</button>
+        <h3>Riset Tren</h3>
+        <input type="text" id="trendInput" placeholder="Niche (contoh: skincare)">
+        <button id="trendBtn" onclick="generate('trend')">Cari Tren</button>
+        <div id="trendResult"></div>
+        <button id="trendSaveBtn" class="hidden" onclick="saveDraft('trend')">Simpan ke Draft</button>
+    </div>
+
+    <!-- Screen: Visual -->
+    <div id="visualScreen" class="card hidden">
+        <button class="back-btn" onclick="showScreen('home')">← Kembali</button>
+        <h3>Ide Visual</h3>
+        <textarea id="visualInput" rows="3" placeholder="Deskripsi konten (contoh: pantai sunset vibes)"></textarea>
+        <button id="visualBtn" onclick="generate('visual')">Dapatkan Ide Visual</button>
+        <div id="visualResult"></div>
+        <button id="visualSaveBtn" class="hidden" onclick="saveDraft('visual')">Simpan ke Draft</button>
+    </div>
+
+    <!-- Screen: Drafts -->
+    <div id="draftsScreen" class="card hidden">
+        <button class="back-btn" onclick="showScreen('home')">← Kembali</button>
+        <h3>Draft Tersimpan</h3>
+        <div id="draftsList"></div>
+    </div>
+
+    <script>
+        // ==================== DATA LAYER ====================
+        const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+
+        function getApiKey() {
+            return document.getElementById('apiKeyInput').value.trim();
+        }
+
+        function getPrompt(type, input) {
+            if (type === 'caption') return `Buatkan caption kreatif untuk konten tentang: ${input}. Maksimal 200 karakter, tone casual dan engaging.`;
+            if (type === 'trend') return `Sebutkan 5 tren terbaru di niche '${input}' untuk konten media sosial. Jelaskan singkat.`;
+            if (type === 'visual') return `Berikan ide visual kreatif untuk konten dengan deskripsi: ${input}. Sertakan palet warna dan gaya visual.`;
+            return '';
+        }
+
+        async function callGemini(prompt) {
+            const apiKey = getApiKey();
+            if (!apiKey) throw new Error('API key belum diisi.');
+            const res = await fetch(`${API_BASE}?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 1024 }
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error?.message || 'Gagal terhubung ke Gemini API');
+            }
+            const data = await res.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Tidak ada respons.';
+        }
+
+        // Drafts pakai localStorage
+        function getDrafts() {
+            const drafts = localStorage.getItem('otokreator_drafts');
+            return drafts ? JSON.parse(drafts) : [];
+        }
+
+        function addDraft(draft) {
+            const drafts = getDrafts();
+            drafts.unshift(draft);
+            localStorage.setItem('otokreator_drafts', JSON.stringify(drafts));
+        }
+
+        // ==================== SCREEN NAVIGATION ====================
+        let currentType = '';
+        let currentInput = '';
+        let currentResult = '';
+
+        function showScreen(name) {
+            const screens = ['home', 'caption', 'trend', 'visual', 'drafts'];
+            screens.forEach(s => {
+                const el = document.getElementById(s + 'Screen');
+                if (el) el.classList.add('hidden');
+            });
+            const target = document.getElementById(name + 'Screen');
+            if (target) target.classList.remove('hidden');
+            if (name === 'drafts') renderDrafts();
+        }
+
+        // ==================== GENERATE ====================
+        async function generate(type) {
+            const inputEl = document.getElementById(type + 'Input');
+            const btnEl = document.getElementById(type + 'Btn');
+            const resultEl = document.getElementById(type + 'Result');
+            const saveBtn = document.getElementById(type + 'SaveBtn');
+
+            const input = inputEl.value.trim();
+            if (!input) return;
+
+            currentType = type;
+            currentInput = input;
+
+            btnEl.disabled = true;
+            resultEl.innerHTML = '<div class="loading">⏳ Menghasilkan...</div>';
+            saveBtn.classList.add('hidden');
+
+            try {
+                const prompt = getPrompt(type, input);
+                const result = await callGemini(prompt);
+                currentResult = result;
+                resultEl.innerHTML = `<div class="result"><strong>Hasil:</strong><br>${result}</div>`;
+                saveBtn.classList.remove('hidden');
+            } catch (e) {
+                resultEl.innerHTML = `<div class="error">❌ ${e.message}</div>`;
+            } finally {
+                btnEl.disabled = false;
+            }
+        }
+
+        function saveDraft(type) {
+            if (!currentResult) return;
+            addDraft({ type, input: currentInput, result: currentResult, timestamp: Date.now() });
+            alert('Berhasil disimpan ke draft!');
+        }
+
+        function renderDrafts() {
+            const container = document.getElementById('draftsList');
+            const drafts = getDrafts();
+            if (drafts.length === 0) {
+                container.innerHTML = '<p style="color:#666;">Belum ada draft tersimpan.</p>';
+                return;
+            }
+            container.innerHTML = drafts.map((d, i) => `
+                <div class="draft-item">
+                    <span>${d.type}</span>
+                    <strong>Input:</strong> ${d.input}<br>
+                    <strong>Hasil:</strong> ${d.result.substring(0, 150)}...
+                </div>
+            `).join('');
+        }
+    </script>
+
+</body>
+</html>
