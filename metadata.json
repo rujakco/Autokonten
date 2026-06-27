@@ -1,0 +1,6 @@
+{
+  "name": "OtoKreator AI",
+  "description": "Mesin otomatis bertenaga AI yang mengotomatisasi riset tren, ideasi kreatif, penulisan caption, pembuatan visual, dan penjadwalan konten untuk TikTok, Instagram, dan Threads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
