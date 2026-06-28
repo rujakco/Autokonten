@@ -9,7 +9,8 @@ data class ProductAsset(
     val title: String,
     val description: String,
     val imageUri: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val type: String = "PRODUK" // "PRODUK", "COPYWRITING", "PROMO"
 )
 
 @Entity(tableName = "trend_topics")

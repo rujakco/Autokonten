@@ -1,18 +1,24 @@
 package com.example.ui
 
 import android.app.Application
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.ContentReminderReceiver
 import com.example.api.AgentOrchestrator
 import com.example.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 class OtoViewModel(application: Application, private val repository: OtoRepository) : AndroidViewModel(application) {
 
@@ -67,21 +73,27 @@ class OtoViewModel(application: Application, private val repository: OtoReposito
                 return@launch
             }
             _isImportingProducts.value = true
-            _importProgress.value = "AI sedang mengekstrak produk..."
-            repository.insertLog(AgentLog("Product Analyzer 🤖", "Mulai memproses data masukan produk mentah.", "Panjang: ${trimmedText.length} karakter."))
+            _importProgress.value = "AI sedang menganalisis dan mengekstrak masukan..."
+            repository.insertLog(AgentLog("Content Extractor 🤖", "Mulai memproses data masukan mentah.", "Panjang: ${trimmedText.length} karakter."))
 
             val systemInstruction = """
-                Anda adalah AI Product Extraction Agent yang handal. Tugas Anda adalah membaca, menganalisis, dan mengekstrak informasi produk dari sebuah teks mentah/acak (seperti hasil copy-paste website, catatan, brosur, atau file deskripsi).
-                Anda dapat mengekstrak satu atau beberapa produk sekaligus jika teks berisi detail dari beberapa produk berbeda.
+                Anda adalah AI Asset Extraction Agent yang handal. Tugas Anda adalah membaca, menganalisis, dan mengekstrak rincian informasi dari teks mentah/acak (seperti hasil copy-paste website, rincian produk, catatan copywriting, atau detail promosi/diskon).
+                Anda dapat mengekstrak satu atau beberapa item sekaligus jika teks berisi rincian yang berbeda.
                 
-                Tuliskan setiap produk yang berhasil diekstrak dalam format tag [PRODUCT] ... [END_PRODUCT] berikut secara ketat:
+                Klasifikasikan setiap item ke dalam salah satu dari 3 tipe berikut secara tepat:
+                - PRODUK: Untuk spesifikasi barang, katalog, jasa, atau deskripsi produk.
+                - COPYWRITING: Untuk contoh/referensi tulisan iklan, caption inspirasional, slogan, hook.
+                - PROMO: Untuk info diskon, event musiman, voucher, bundling harga, kupon.
+                
+                Tuliskan setiap item yang berhasil diekstrak dalam format tag [PRODUCT] ... [END_PRODUCT] berikut secara ketat:
                 
                 [PRODUCT]
-                Nama: <Nama singkat produk atau jasa>
-                Deskripsi: <Deskripsi detail produk, nilai jual utama, kelebihan, spesifikasi, harga jika ada, dll.>
+                Tipe: <Isi dengan salah satu tipe di atas secara ketat: PRODUK atau COPYWRITING atau PROMO>
+                Nama: <Nama singkat produk, judul copywriting, atau judul promo/event>
+                Deskripsi: <Deskripsi detail produk, tulisan copywriting lengkap, atau ketentuan promo/diskon>
                 [END_PRODUCT]
                 
-                Pastikan Anda hanya menggunakan data asli dari teks yang diberikan. Jangan mengada-ada informasi yang tidak ada dalam teks. Jika teks sangat acak, bersihkan dan susun ke dalam Nama dan Deskripsi yang rapi.
+                Pastikan Anda hanya menggunakan data asli dari teks yang diberikan. Jangan mengada-ada informasi yang tidak ada dalam teks.
             """.trimIndent()
 
             try {
@@ -96,6 +108,7 @@ class OtoViewModel(application: Application, private val repository: OtoReposito
                     for (block in blocks) {
                         if (!block.contains("[END_PRODUCT]")) continue
                         val content = block.substringBefore("[END_PRODUCT]").trim()
+                        var tipe = "PRODUK"
                         var nama = ""
                         var deskripsi = ""
 
@@ -105,7 +118,12 @@ class OtoViewModel(application: Application, private val repository: OtoReposito
 
                         for (line in lines) {
                             val trimmedLine = line.trim()
-                            if (trimmedLine.startsWith("Nama:")) {
+                            if (trimmedLine.startsWith("Tipe:")) {
+                                val parsedType = trimmedLine.substringAfter("Tipe:").trim().uppercase()
+                                if (parsedType == "PRODUK" || parsedType == "COPYWRITING" || parsedType == "PROMO") {
+                                    tipe = parsedType
+                                }
+                            } else if (trimmedLine.startsWith("Nama:")) {
                                 nama = trimmedLine.substringAfter("Nama:").trim()
                             } else if (trimmedLine.startsWith("Deskripsi:")) {
                                 currentField = "deskripsi"
@@ -123,36 +141,44 @@ class OtoViewModel(application: Application, private val repository: OtoReposito
                         }
 
                         if (nama.isNotBlank() && deskripsi.isNotBlank()) {
-                            repository.insertAsset(ProductAsset(title = nama, description = deskripsi))
-                            repository.insertLog(AgentLog("Product Analyzer 🤖", "Berhasil mengekstrak produk dari teks mentah.", "Produk: $nama"))
+                            repository.insertAsset(ProductAsset(title = nama, description = deskripsi, type = tipe))
+                            repository.insertLog(AgentLog("Content Extractor 🤖", "Berhasil mengekstrak item dari teks mentah.", "Tipe: $tipe, Judul: $nama"))
                             count++
                         }
                     }
                 }
 
                 if (count > 0) {
-                    repository.insertLog(AgentLog("System", "Selesai memproses impor batch produk.", "$count produk berhasil ditambahkan."))
+                    repository.insertLog(AgentLog("System", "Selesai memproses impor batch aset.", "$count aset berhasil diklasifikasikan dan ditambahkan."))
                     onComplete(count)
                 } else {
                     // Fallback to single product parsing if AI failed to format or returned unparseable text
-                    _importProgress.value = "AI tidak mendeteksi format multi-produk, mengimpor sebagai produk tunggal..."
-                    val firstLine = trimmedText.lines().firstOrNull()?.take(50) ?: "Produk Impor Tanpa Nama"
+                    _importProgress.value = "Format khusus tidak terdeteksi, mengimpor sebagai satu produk tunggal..."
+                    val firstLine = trimmedText.lines().firstOrNull()?.take(50) ?: "Aset Impor Tanpa Nama"
                     val title = firstLine.removeSuffix(":").removeSuffix("-").trim()
-                    repository.insertAsset(ProductAsset(title = title, description = trimmedText))
-                    repository.insertLog(AgentLog("Product Analyzer 🤖", "Impor cadangan (produk tunggal) selesai.", "Produk: $title"))
+                    repository.insertAsset(ProductAsset(title = title, description = trimmedText, type = "PRODUK"))
+                    repository.insertLog(AgentLog("Content Extractor 🤖", "Impor cadangan (produk tunggal) selesai.", "Judul: $title"))
                     onComplete(1)
                 }
             } catch (e: Exception) {
                 // Total fallback in case of no network or general error
-                val firstLine = trimmedText.lines().firstOrNull()?.take(50) ?: "Produk Impor Tanpa Nama"
+                val firstLine = trimmedText.lines().firstOrNull()?.take(50) ?: "Aset Impor Tanpa Nama"
                 val title = firstLine.removeSuffix(":").removeSuffix("-").trim()
-                repository.insertAsset(ProductAsset(title = title, description = trimmedText))
-                repository.insertLog(AgentLog("Product Analyzer 🤖", "Terjadi error AI, teks dimasukkan sebagai satu produk.", "Error: ${e.message}"))
+                repository.insertAsset(ProductAsset(title = title, description = trimmedText, type = "PRODUK"))
+                repository.insertLog(AgentLog("Content Extractor 🤖", "Terjadi error AI, teks dimasukkan sebagai produk tunggal.", "Error: ${e.message}"))
                 onComplete(1)
             } finally {
                 _isImportingProducts.value = false
                 _importProgress.value = ""
             }
+        }
+    }
+
+    // Add Product Asset Manually
+    fun addManualProduct(title: String, description: String, type: String) {
+        viewModelScope.launch {
+            repository.insertAsset(ProductAsset(title = title, description = description, type = type))
+            repository.insertLog(AgentLog("Content Extractor 🤖", "Menambahkan aset manual secara langsung.", "Tipe: $type, Judul: $title"))
         }
     }
 
@@ -391,7 +417,212 @@ class OtoViewModel(application: Application, private val repository: OtoReposito
             repository.insertLog(AgentLog("System", "Menambahkan produk sampel.", "OtoBrew Coffee Milk 1L"))
         }
     }
+
+    // ==========================================
+    // EXTENDED CAPABILITIES (NEW ADDITIONS)
+    // ==========================================
+
+    private val prefs = getApplication<Application>().getSharedPreferences("otokreator_prefs", Context.MODE_PRIVATE)
+
+    private val _weeklyCampaign = MutableStateFlow(
+        prefs.getString("weekly_campaign", "") ?: ""
+    )
+    val weeklyCampaign: StateFlow<String> = _weeklyCampaign.asStateFlow()
+
+    private val _isGeneratingWeeklyCampaign = MutableStateFlow(false)
+    val isGeneratingWeeklyCampaign: StateFlow<Boolean> = _isGeneratingWeeklyCampaign.asStateFlow()
+
+    fun generateWeeklyCampaign(onComplete: () -> Unit = {}) {
+        if (_isGeneratingWeeklyCampaign.value) return
+        viewModelScope.launch {
+            _isGeneratingWeeklyCampaign.value = true
+            repository.insertLog(AgentLog("Campaign Strategist 🎯", "Mulai merancang strategi kampanye mingguan berurutan.", "Menganalisis basis pengetahuan produk..."))
+            
+            val activeAssets = userProducts.value
+            val assetsDesc = if (activeAssets.isEmpty()) {
+                "Kopi Susu Literan Premium (OtoBrew)"
+            } else {
+                activeAssets.joinToString("\n") { "- [${it.type}] ${it.title}: ${it.description}" }
+            }
+
+            val prompt = """
+                Berdasarkan daftar produk dan aset pemasaran berikut:
+                $assetsDesc
+                
+                Rancanglah strategi tema kampanye mingguan berurutan selama 4 minggu ke depan. Setiap minggu harus memiliki satu tema besar yang unik, fokus pesan utama, jenis penawaran yang ideal (diskon, bundling, edukasi), dan 3 ide konten taktis (untuk TikTok, Instagram, Threads).
+                
+                Tuliskan strategi dalam bahasa Indonesia yang sangat profesional, terstruktur, kreatif, dan praktis bagi pebisnis. Gunakan format yang bersih dengan penomoran Minggu 1 s/d Minggu 4.
+            """.trimIndent()
+
+            try {
+                val response = com.example.api.GeminiClient.generateContent(
+                    prompt = prompt,
+                    systemInstruction = "Anda adalah Chief Marketing Officer dan Ahli Strategi Kampanye Media Sosial Senior."
+                )
+                prefs.edit().putString("weekly_campaign", response).apply()
+                _weeklyCampaign.value = response
+                repository.insertLog(AgentLog("Campaign Strategist 🎯", "Sukses merancang tema kampanye 4 minggu!", "Rencana kampanye telah diperbarui."))
+            } catch (e: Exception) {
+                repository.insertLog(AgentLog("Campaign Strategist 🎯", "Gagal merancang kampanye mingguan.", e.message ?: "Unknown Error"))
+            } finally {
+                _isGeneratingWeeklyCampaign.value = false
+                onComplete()
+            }
+        }
+    }
+
+    // Chat Consultation States
+    private val _chatMessages = MutableStateFlow<List<ChatMessage>>(listOf(
+        ChatMessage(
+            sender = "AI",
+            text = "Halo! Saya adalah Konsultan Ahli Pemasaran Anda di OtoKreator AI. 🎓\n\nSaya siap menjadi teman diskusi, memberi masukan strategi, me-review copywriting, atau memikirkan ide promo gila-gilaan agar bisnis Anda melejit. Apa yang ingin Anda tanyakan atau diskusikan hari ini?"
+        )
+    ))
+    val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
+
+    private val _isChatLoading = MutableStateFlow(false)
+    val isChatLoading: StateFlow<Boolean> = _isChatLoading.asStateFlow()
+
+    fun sendChatMessage(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isBlank() || _isChatLoading.value) return
+        
+        viewModelScope.launch {
+            _chatMessages.update { it + ChatMessage("USER", trimmed) }
+            _isChatLoading.value = true
+            
+            val systemInstruction = """
+                Anda adalah 'OtoKreator AI Expert Partner' - Pakar Marketing, Copywriter Senior, dan Ahli Strategi Konten Media Sosial legendaris di Indonesia.
+                Tugas Anda adalah menjadi konsultan ahli, teman diskusi yang hidup, hangat, antusias, dan sangat berpengetahuan tinggi.
+                Gaya komunikasi Anda: ramah, cerdas, solutif, menggunakan bahasa Indonesia yang santai tapi profesional (sesekali gunakan istilah marketing modern yang umum seperti hook, conversion, CTA secara natural).
+                Berikan jawaban taktis yang bisa langsung dipraktekkan (berupa langkah konkret, rekomendasi format video, struktur copywriting AIDA, atau formula headline yang memicu klik).
+                Selalu dukung dan apresiasi ide pengguna serta bantu mereka menyempurnakannya secara aktif.
+            """.trimIndent()
+            
+            try {
+                val history = _chatMessages.value.takeLast(6).joinToString("\n") { 
+                    if (it.sender == "USER") "User: ${it.text}" else "AI: ${it.text}"
+                }
+                
+                val response = com.example.api.GeminiClient.generateContent(
+                    prompt = "$history\nUser: $trimmed\nAI:",
+                    systemInstruction = systemInstruction
+                )
+                
+                _chatMessages.update { it + ChatMessage("AI", response) }
+            } catch (e: Exception) {
+                _chatMessages.update { it + ChatMessage("AI", "Duh, sepertinya ada sedikit kendala koneksi dengan pusat pikiran saya. Bisakah Anda mengulangi pertanyaannya? 🙏 (Error: ${e.message})") }
+            } finally {
+                _isChatLoading.value = false
+            }
+        }
+    }
+
+    // Post Scheduling Alarms
+    fun schedulePostAlarm(context: Context, post: SocialPost, customHour: Int? = null, customMinute: Int? = null) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, ContentReminderReceiver::class.java).apply {
+            putExtra("platform", post.platform)
+            putExtra("slot", post.slotName)
+            putExtra("caption", post.caption)
+        }
+        
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            post.id,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val targetHour = customHour ?: post.scheduleHour
+        val targetMinute = customMinute ?: 0
+
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = System.currentTimeMillis()
+            set(Calendar.HOUR_OF_DAY, targetHour)
+            set(Calendar.MINUTE, targetMinute)
+            set(Calendar.SECOND, 0)
+            
+            if (timeInMillis <= System.currentTimeMillis()) {
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    pendingIntent
+                )
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                calendar.timeInMillis,
+                pendingIntent
+            )
+        } else {
+            alarmManager.set(
+                AlarmManager.RTC_WAKEUP,
+                calendar.timeInMillis,
+                pendingIntent
+            )
+        }
+        
+        val displayHour = targetHour.toString().padStart(2, '0')
+        val displayMinute = targetMinute.toString().padStart(2, '0')
+
+        prefs.edit().apply {
+            putBoolean("alarm_active_${post.id}", true)
+            putInt("alarm_time_hour_${post.id}", targetHour)
+            putInt("alarm_time_minute_${post.id}", targetMinute)
+        }.apply()
+        
+        Toast.makeText(context, "Alarm Posting ${post.platform} aktif untuk jam $displayHour:$displayMinute! 🔔", Toast.LENGTH_LONG).show()
+        
+        viewModelScope.launch {
+            repository.insertLog(AgentLog("System", "Mengaktifkan Alarm Posting 🔔", "${post.platform} - Slot: ${post.slotName} pada jam $displayHour:$displayMinute"))
+        }
+    }
+
+    fun cancelPostAlarm(context: Context, post: SocialPost) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, ContentReminderReceiver::class.java)
+        
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            post.id,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        alarmManager.cancel(pendingIntent)
+        prefs.edit().putBoolean("alarm_active_${post.id}", false).apply()
+        Toast.makeText(context, "Alarm Posting ${post.platform} dinonaktifkan.", Toast.LENGTH_SHORT).show()
+        
+        viewModelScope.launch {
+            repository.insertLog(AgentLog("System", "Menonaktifkan Alarm Posting 🔕", "${post.platform} - Slot: ${post.slotName}"))
+        }
+    }
+
+    fun isAlarmActive(context: Context, postId: Int): Boolean {
+        val p = context.getSharedPreferences("otokreator_prefs", Context.MODE_PRIVATE)
+        return p.getBoolean("alarm_active_$postId", false)
+    }
 }
+
+data class ChatMessage(
+    val sender: String, // "USER" or "AI"
+    val text: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 class OtoViewModelFactory(
     private val application: Application,

@@ -3,6 +3,8 @@ package com.example
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.ClipboardManager
+import android.content.ClipData
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -74,6 +76,276 @@ class MainActivity : ComponentActivity() {
                 )
 
                 OtoStudioDashboard(viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun ConsultantTab(viewModel: OtoViewModel) {
+    val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    val isChatLoading by viewModel.isChatLoading.collectAsStateWithLifecycle()
+    var currentMessageText by remember { mutableStateOf("") }
+    val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val context = LocalContext.current
+
+    // Auto scroll to the end on new messages
+    LaunchedEffect(chatMessages.size) {
+        if (chatMessages.isNotEmpty()) {
+            lazyListState.animateScrollToItem(chatMessages.size - 1)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+    ) {
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Expert profile header
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, StudioAccent.copy(alpha = 0.4f), RoundedCornerShape(12.dp)),
+            colors = CardDefaults.cardColors(containerColor = StudioCardBg),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(StudioGold.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Face,
+                        contentDescription = "Pakar",
+                        tint = StudioGold,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "OtoKreator AI Expert Partner 🎓",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = StudioGold
+                    )
+                    Text(
+                        text = "Pakar Marketing, Copywriter Senior & Konsultan Strategi",
+                        fontSize = 11.sp,
+                        color = Color.LightGray
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Pre-defined quick tactical question chips
+        Text(
+            text = "Konsultasi Cepat:",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = StudioAccent
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val suggestions = listOf(
+                "Review Copywriting" to "Saya ingin Anda me-review copywriting saya untuk produk ini. Apa hook-nya kurang menarik?",
+                "Formula Promosi" to "Berikan saya formula promosi diskon/bundling gila-gilaan yang sulit ditolak calon pelanggan!",
+                "Struktur Video TikTok" to "Rancang struktur naskah video TikTok berdurasi 30 detik menggunakan formula Hook - Story - Offer!"
+            )
+            suggestions.forEach { (label, fullQuery) ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(StudioCardBg)
+                        .border(1.dp, CardBorderColor, RoundedCornerShape(8.dp))
+                        .clickable {
+                            if (!isChatLoading) {
+                                viewModel.sendChatMessage(fullQuery)
+                            }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 9.sp,
+                        color = StudioAccent,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Chat Message Area
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black.copy(alpha = 0.2f))
+                .border(1.dp, CardBorderColor, RoundedCornerShape(12.dp))
+        ) {
+            androidx.compose.foundation.lazy.LazyColumn(
+                state = lazyListState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(chatMessages) { msg ->
+                    val isUser = msg.sender == "USER"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .border(
+                                    1.dp,
+                                    if (isUser) StudioPrimary.copy(alpha = 0.4f) else CardBorderColor,
+                                    RoundedCornerShape(
+                                        topStart = 12.dp,
+                                        topEnd = 12.dp,
+                                        bottomStart = if (isUser) 12.dp else 0.dp,
+                                        bottomEnd = if (isUser) 0.dp else 12.dp
+                                    )
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isUser) StudioPrimary.copy(alpha = 0.15f) else StudioCardBg
+                            ),
+                            shape = RoundedCornerShape(
+                                topStart = 12.dp,
+                                topEnd = 12.dp,
+                                bottomStart = if (isUser) 12.dp else 0.dp,
+                                bottomEnd = if (isUser) 0.dp else 12.dp
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = if (isUser) "Anda" else "Konsultan Ahli AI",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isUser) StudioAccent else StudioGold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = msg.text,
+                                    fontSize = 12.sp,
+                                    color = Color.White,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (isChatLoading) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = StudioCardBg),
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .border(1.dp, CardBorderColor, RoundedCornerShape(12.dp)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = StudioGold,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Sedang berpikir...", fontSize = 11.sp, color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Input Box
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = currentMessageText,
+                onValueChange = { currentMessageText = it },
+                placeholder = { Text("Tanyakan strategi marketing, copywriting...", fontSize = 12.sp) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = StudioAccent,
+                    unfocusedBorderColor = CardBorderColor,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("chat_input_text_field"),
+                shape = RoundedCornerShape(24.dp),
+                maxLines = 3,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (currentMessageText.isNotBlank() && !isChatLoading) {
+                            viewModel.sendChatMessage(currentMessageText)
+                            currentMessageText = ""
+                        }
+                    }
+                )
+            )
+
+            FloatingActionButton(
+                onClick = {
+                    if (currentMessageText.isNotBlank() && !isChatLoading) {
+                        viewModel.sendChatMessage(currentMessageText)
+                        currentMessageText = ""
+                    }
+                },
+                containerColor = StudioPrimary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("send_chat_message_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Send,
+                    contentDescription = "Kirim",
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
@@ -175,7 +447,7 @@ fun OtoStudioDashboard(viewModel: OtoViewModel) {
                     selected = currentTab.value == 0,
                     onClick = { currentTab.value = 0 },
                     icon = { Icon(Icons.Default.List, contentDescription = "Pengetahuan") },
-                    label = { Text("Aset Produk") },
+                    label = { Text("Aset Data") },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = StudioAccent,
                         unselectedIconColor = Color.Gray,
@@ -188,7 +460,7 @@ fun OtoStudioDashboard(viewModel: OtoViewModel) {
                     selected = currentTab.value == 1,
                     onClick = { currentTab.value = 1 },
                     icon = { Icon(Icons.Default.DateRange, contentDescription = "Jadwal") },
-                    label = { Text("Jadwal Konten") },
+                    label = { Text("Jadwal") },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = StudioAccent,
                         unselectedIconColor = Color.Gray,
@@ -202,6 +474,19 @@ fun OtoStudioDashboard(viewModel: OtoViewModel) {
                     onClick = { currentTab.value = 2 },
                     icon = { Icon(Icons.Default.Face, contentDescription = "Tim Agen") },
                     label = { Text("Tim & Log") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = StudioAccent,
+                        unselectedIconColor = Color.Gray,
+                        selectedTextColor = StudioAccent,
+                        unselectedTextColor = Color.Gray,
+                        indicatorColor = StudioCardBg
+                    )
+                )
+                NavigationBarItem(
+                    selected = currentTab.value == 3,
+                    onClick = { currentTab.value = 3 },
+                    icon = { Icon(Icons.Default.Send, contentDescription = "Pakar AI") },
+                    label = { Text("Pakar AI 💬") },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = StudioAccent,
                         unselectedIconColor = Color.Gray,
@@ -242,6 +527,7 @@ fun OtoStudioDashboard(viewModel: OtoViewModel) {
                     0 -> KnowledgeBaseTab(viewModel, userProducts)
                     1 -> ScheduleTab(viewModel, socialPosts, selectedPlatformFilter)
                     2 -> AgentsLogTab(viewModel, trends, agentLogs)
+                    3 -> ConsultantTab(viewModel)
                 }
             }
 
@@ -357,6 +643,23 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
         }
     }
 
+    var selectedTypeFilter by remember { mutableStateOf("SEMUA") }
+    var searchQuery by remember { mutableStateOf("") }
+    
+    // Manual add asset dialog states
+    var showManualAddDialog by remember { mutableStateOf(false) }
+    var manualTitle by remember { mutableStateOf("") }
+    var manualDescription by remember { mutableStateOf("") }
+    var manualType by remember { mutableStateOf("PRODUK") }
+
+    val filteredAssets = assets.filter { asset ->
+        val matchesType = selectedTypeFilter == "SEMUA" || asset.type == selectedTypeFilter
+        val matchesSearch = searchQuery.isBlank() || 
+                asset.title.contains(searchQuery, ignoreCase = true) || 
+                asset.description.contains(searchQuery, ignoreCase = true)
+        matchesType && matchesSearch
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -366,13 +669,13 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
         item {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Pangkalan Pengetahuan Produk",
+                text = "Pangkalan Pengetahuan Konten",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
             Text(
-                text = "Tempel teks deskripsi produk/jasa Anda atau unggah file .txt. Agen AI akan memilah, merapikan, dan mengekstrak informasi produk secara otomatis untuk basis promosi harian.",
+                text = "Tempel teks deskripsi produk/jasa, referensi copywriting, atau detail promo Anda di sini. AI akan memilah, mendeteksi tipe aset, dan mengaturnya secara otomatis untuk basis promosi harian.",
                 fontSize = 12.sp,
                 color = Color.LightGray,
                 modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
@@ -394,7 +697,7 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Unggah atau Copy-Paste Informasi Produk",
+                            text = "Unggah atau Tempel Sumber Data",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = StudioAccent
@@ -413,9 +716,9 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                     OutlinedTextField(
                         value = rawText,
                         onValueChange = { rawText = it },
-                        label = { Text("Konten Deskripsi Produk") },
+                        label = { Text("Materi / Sumber Data Masukan") },
                         placeholder = { 
-                            Text("Tempel teks deskripsi produk di sini atau unggah file .txt...\n\nAnda dapat menempel rincian spesifikasi beberapa produk sekaligus. AI akan memilahnya secara cerdas.") 
+                            Text("Tempel teks apa saja: deskripsi produk, contoh copywriting iklan, atau info promo diskon gila-gilaan...\n\nAI akan mengekstrak dan mengklasifikasikan tipenya secara otomatis!") 
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -456,22 +759,37 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         // File picker button
                         Button(
                             onClick = { filePickerLauncher.launch("text/plain") },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                             modifier = Modifier
-                                .weight(1.5f)
+                                .weight(1f)
                                 .border(1.dp, StudioAccent, RoundedCornerShape(8.dp))
                                 .testTag("upload_txt_file_button"),
                             enabled = !isImportingProducts,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                         ) {
-                            Icon(Icons.Default.List, contentDescription = "Pilih File", tint = StudioAccent, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Pilih File .txt", color = StudioAccent, fontSize = 11.sp)
+                            Icon(Icons.Default.List, contentDescription = "Pilih File", tint = StudioAccent, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Pilih File .txt", color = StudioAccent, fontSize = 10.sp)
+                        }
+
+                        // Manual Add Button
+                        Button(
+                            onClick = { showManualAddDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = StudioCardBg),
+                            modifier = Modifier
+                                .weight(1f)
+                                .border(1.dp, StudioGold, RoundedCornerShape(8.dp)),
+                            enabled = !isImportingProducts,
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Tambah Manual", tint = StudioGold, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Tambah Manual", color = StudioGold, fontSize = 10.sp)
                         }
 
                         // Process with AI button
@@ -481,7 +799,7 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                                     viewModel.parseAndInsertRawProducts(rawText) { count ->
                                         if (count > 0) {
                                             rawText = ""
-                                            Toast.makeText(context, "Berhasil mengimpor $count produk! ✨", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, "Berhasil mengimpor & mengekstrak $count aset data! ✨", Toast.LENGTH_LONG).show()
                                         } else {
                                             Toast.makeText(context, "Gagal mengimpor produk. Coba periksa teks Anda.", Toast.LENGTH_LONG).show()
                                         }
@@ -492,15 +810,15 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = StudioPrimary),
                             modifier = Modifier
-                                .weight(1.5f)
+                                .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .testTag("add_product_button"),
                             enabled = !isImportingProducts && rawText.isNotBlank(),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                         ) {
-                            Icon(Icons.Default.Star, contentDescription = "Simpan", tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Mulai Ekstrak AI", color = Color.White, fontSize = 11.sp)
+                            Icon(Icons.Default.Star, contentDescription = "Simpan", tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Mulai Ekstrak", color = Color.White, fontSize = 10.sp)
                         }
                     }
                     
@@ -523,21 +841,91 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
 
         item {
             Spacer(modifier = Modifier.height(24.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Cari judul atau deskripsi aset...", color = Color.Gray, fontSize = 12.sp) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = StudioAccent,
+                    unfocusedBorderColor = CardBorderColor,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedContainerColor = StudioCardBg,
+                    unfocusedContainerColor = StudioCardBg
+                ),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Cari",
+                        tint = StudioAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Bersihkan",
+                                tint = Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Filter Tipe Data Masukan:",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = StudioAccent
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = "Pengetahuan Terdaftar (${assets.size})",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                listOf(
+                    "SEMUA" to "Semua Aset 📂",
+                    "PRODUK" to "Produk 📦",
+                    "COPYWRITING" to "Copywriting 📝",
+                    "PROMO" to "Promo 🏷️"
+                ).forEach { (type, label) ->
+                    val isSelected = selectedTypeFilter == type
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isSelected) StudioPrimary else StudioCardBg)
+                            .border(1.dp, if (isSelected) StudioAccent else CardBorderColor, RoundedCornerShape(20.dp))
+                            .clickable { selectedTypeFilter = type }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 10.sp,
+                            color = if (isSelected) Color.White else Color.LightGray,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Pangkalan Pengetahuan (${filteredAssets.size})",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        if (assets.isEmpty()) {
+        if (filteredAssets.isEmpty()) {
             item {
                 Box(
                     modifier = Modifier
@@ -554,12 +942,12 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Belum ada produk yang disimpan.",
+                            text = "Belum ada aset data tipe $selectedTypeFilter yang disimpan.",
                             color = Color.LightGray,
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "Klik 'Muat Contoh Kopi' untuk mencoba instan!",
+                            text = "Materi bisa berupa info produk, diskon, atau copywriting.",
                             color = Color.Gray,
                             fontSize = 11.sp
                         )
@@ -567,16 +955,130 @@ fun KnowledgeBaseTab(viewModel: OtoViewModel, assets: List<ProductAsset>) {
                 }
             }
         } else {
-            items(assets) { asset ->
+            items(filteredAssets) { asset ->
                 ProductAssetCard(asset, onDelete = { viewModel.deleteProduct(asset.id) })
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }
+
+    if (showManualAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showManualAddDialog = false },
+            containerColor = StudioCardBg,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = StudioGold, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Tambah Aset Manual 📦",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = manualTitle,
+                        onValueChange = { manualTitle = it },
+                        label = { Text("Nama/Judul Aset", color = Color.Gray, fontSize = 11.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = StudioAccent,
+                            unfocusedBorderColor = Color.Gray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    
+                    OutlinedTextField(
+                        value = manualDescription,
+                        onValueChange = { manualDescription = it },
+                        label = { Text("Deskripsi / Detail Konten", color = Color.Gray, fontSize = 11.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = StudioAccent,
+                            unfocusedBorderColor = Color.Gray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 4
+                    )
+                    
+                    Text("Tipe Aset:", fontSize = 11.sp, color = StudioAccent, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "PRODUK" to "Produk 📦",
+                            "COPYWRITING" to "Copywriting 📝",
+                            "PROMO" to "Promo 🏷️"
+                        ).forEach { (type, label) ->
+                            val isSelected = manualType == type
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) StudioPrimary else Color.Transparent)
+                                    .border(1.dp, if (isSelected) StudioAccent else Color.Gray, RoundedCornerShape(8.dp))
+                                    .clickable { manualType = type }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 10.sp,
+                                    color = if (isSelected) Color.White else Color.LightGray,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (manualTitle.isNotBlank() && manualDescription.isNotBlank()) {
+                            viewModel.addManualProduct(manualTitle, manualDescription, manualType)
+                            showManualAddDialog = false
+                            manualTitle = ""
+                            manualDescription = ""
+                            Toast.makeText(context, "Aset berhasil ditambahkan secara manual! ✨", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Harap lengkapi semua bidang!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StudioPrimary)
+                ) {
+                    Text("Simpan Aset", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualAddDialog = false }) {
+                    Text("Batal", color = Color.Gray)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun ProductAssetCard(asset: ProductAsset, onDelete: () -> Unit) {
+    val badgeColor = when (asset.type) {
+        "PRODUK" -> Color(0xFFC084FC) // Purple
+        "COPYWRITING" -> Color(0xFF60A5FA) // Blue
+        "PROMO" -> Color(0xFFFBBF24) // Gold
+        else -> StudioAccent
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -591,12 +1093,19 @@ fun ProductAssetCard(asset: ProductAsset, onDelete: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.List,
-                        contentDescription = "Aset",
-                        tint = StudioAccent,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(badgeColor.copy(alpha = 0.2f))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = asset.type,
+                            fontSize = 8.sp,
+                            color = badgeColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = asset.title,
@@ -605,7 +1114,7 @@ fun ProductAssetCard(asset: ProductAsset, onDelete: () -> Unit) {
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(0.75f)
+                        modifier = Modifier.fillMaxWidth(0.6f)
                     )
                 }
                 IconButton(
@@ -644,6 +1153,8 @@ fun ScheduleTab(
     val context = LocalContext.current
     val filteredPosts = posts.filter { it.platform == platformFilter }
     val isRegeneratingMap by viewModel.isRegeneratingMap.collectAsStateWithLifecycle()
+    val weeklyCampaign by viewModel.weeklyCampaign.collectAsStateWithLifecycle()
+    val isGeneratingWeeklyCampaign by viewModel.isGeneratingWeeklyCampaign.collectAsStateWithLifecycle()
 
     LazyColumn(
         modifier = Modifier
@@ -685,6 +1196,102 @@ fun ScheduleTab(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Weekly Campaign Theme Section
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .border(1.dp, StudioAccent.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = StudioCardBg),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = "Campaign Theme",
+                                tint = StudioGold,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Tema Kampanye Mingguan 🎯",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = StudioGold
+                            )
+                        }
+                        
+                        if (isGeneratingWeeklyCampaign) {
+                            CircularProgressIndicator(
+                                color = StudioGold,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else {
+                            TextButton(
+                                onClick = { viewModel.generateWeeklyCampaign() },
+                                colors = ButtonDefaults.textButtonColors(contentColor = StudioAccent),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(if (weeklyCampaign.isBlank()) "Rancang AI 🚀" else "Rancang Ulang 🔄", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    if (weeklyCampaign.isBlank()) {
+                        Text(
+                            text = "Belum ada rencana tema kampanye mingguan. Tekan 'Rancang AI' untuk menganalisis pangkalan data produk Anda dan menyusun rencana tema kampanye berurutan selama 4 minggu ke depan secara otomatis!",
+                            fontSize = 11.sp,
+                            color = Color.LightGray,
+                            lineHeight = 15.sp
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.4f))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = weeklyCampaign,
+                                fontSize = 12.sp,
+                                color = Color.LightGray,
+                                lineHeight = 16.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Tema Kampanye", weeklyCampaign)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Tema kampanye disalin ke papan klip! 📋", Toast.LENGTH_SHORT).show()
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.List, contentDescription = "Copy", modifier = Modifier.size(14.dp), tint = StudioAccent)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Salin Rencana 📋", fontSize = 10.sp, color = StudioAccent)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Platform Filter Selection Tabs
@@ -763,7 +1370,8 @@ fun ScheduleTab(
                     onRegenerate = { p, instruction, onDone ->
                         viewModel.regenerateSocialPost(p, instruction, onDone)
                     },
-                    isRegenerating = isRegen
+                    isRegenerating = isRegen,
+                    viewModel = viewModel
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -778,7 +1386,8 @@ fun SocialPostCard(
     onDelete: () -> Unit,
     onUpdate: (SocialPost) -> Unit,
     onRegenerate: (SocialPost, String, (Boolean) -> Unit) -> Unit,
-    isRegenerating: Boolean
+    isRegenerating: Boolean,
+    viewModel: OtoViewModel
 ) {
     val brandColor = when (post.platform) {
         "TIKTOK" -> BrandTikTok
@@ -794,6 +1403,22 @@ fun SocialPostCard(
 
     var showRegenDialog by remember { mutableStateOf(false) }
     var customInstruction by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    var isAlarmActive by remember { mutableStateOf(viewModel.isAlarmActive(context, post.id)) }
+
+    var showAlarmTimeDialog by remember { mutableStateOf(false) }
+    var selectedAlarmHour by remember { mutableStateOf(post.scheduleHour) }
+    var selectedAlarmMinute by remember { mutableStateOf(0) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            showAlarmTimeDialog = true
+        } else {
+            Toast.makeText(context, "Izin notifikasi ditolak. Pengingat tidak dapat ditampilkan.", Toast.LENGTH_LONG).show()
+        }
+    }
 
     // Sync state if post changes externally (e.g. after regeneration)
     LaunchedEffect(post) {
@@ -801,6 +1426,7 @@ fun SocialPostCard(
         editCaption = post.caption
         editHashtags = post.hashtags
         editPrompt = post.promptUsed
+        isAlarmActive = viewModel.isAlarmActive(context, post.id)
     }
 
     if (showEditDialog) {
@@ -959,6 +1585,171 @@ fun SocialPostCard(
         )
     }
 
+    if (showAlarmTimeDialog) {
+        AlertDialog(
+            onDismissRequest = { showAlarmTimeDialog = false },
+            containerColor = StudioCardBg,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = StudioGold,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Setel Pengingat Kustom ⏰",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Atur waktu pengingat khusus untuk slot ${post.slotName} agar notifikasi muncul sesuai preferensi Anda.",
+                        fontSize = 12.sp,
+                        color = Color.LightGray
+                    )
+                    
+                    // Hour selector
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Jam:", fontSize = 13.sp, color = StudioAccent, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { if (selectedAlarmHour > 0) selectedAlarmHour-- else selectedAlarmHour = 23 }) {
+                                    Text("-", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(50.dp)
+                                        .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(selectedAlarmHour.toString().padStart(2, '0'), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                                IconButton(onClick = { if (selectedAlarmHour < 23) selectedAlarmHour++ else selectedAlarmHour = 0 }) {
+                                    Text("+", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Slider(
+                            value = selectedAlarmHour.toFloat(),
+                            onValueChange = { selectedAlarmHour = it.toInt() },
+                            valueRange = 0f..23f,
+                            steps = 22,
+                            colors = SliderDefaults.colors(
+                                thumbColor = StudioAccent,
+                                activeTrackColor = StudioAccent,
+                                inactiveTrackColor = Color.Gray
+                            )
+                        )
+                    }
+
+                    // Minute selector
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Menit:", fontSize = 13.sp, color = StudioAccent, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { if (selectedAlarmMinute > 0) selectedAlarmMinute = (selectedAlarmMinute - 5 + 60) % 60 else selectedAlarmMinute = 55 }) {
+                                    Text("-", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(50.dp)
+                                        .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(selectedAlarmMinute.toString().padStart(2, '0'), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                                IconButton(onClick = { selectedAlarmMinute = (selectedAlarmMinute + 5) % 60 }) {
+                                    Text("+", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Slider(
+                            value = selectedAlarmMinute.toFloat(),
+                            onValueChange = { selectedAlarmMinute = (it.toInt() / 5) * 5 },
+                            valueRange = 0f..55f,
+                            steps = 10,
+                            colors = SliderDefaults.colors(
+                                thumbColor = StudioAccent,
+                                activeTrackColor = StudioAccent,
+                                inactiveTrackColor = Color.Gray
+                            )
+                        )
+                    }
+
+                    // Quick buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "Jadwal Asli" to {
+                                selectedAlarmHour = post.scheduleHour
+                                selectedAlarmMinute = 0
+                            },
+                            "Siang (12:00)" to {
+                                selectedAlarmHour = 12
+                                selectedAlarmMinute = 0
+                            },
+                            "Malam (19:30)" to {
+                                selectedAlarmHour = 19
+                                selectedAlarmMinute = 30
+                            }
+                        ).forEach { (label, action) ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(StudioCardBg.copy(alpha = 0.5f))
+                                    .border(0.5.dp, Color.Gray, RoundedCornerShape(6.dp))
+                                    .clickable { action() }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(label, fontSize = 9.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.schedulePostAlarm(context, post, selectedAlarmHour, selectedAlarmMinute)
+                        isAlarmActive = true
+                        showAlarmTimeDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StudioPrimary)
+                ) {
+                    Text("Aktifkan Alarm 🔔", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAlarmTimeDialog = false }) {
+                    Text("Batal", color = Color.Gray)
+                }
+            }
+        )
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -995,10 +1786,19 @@ fun SocialPostCard(
                         color = Color.White
                     )
                     Spacer(modifier = Modifier.width(6.dp))
+                    val prefs = remember(isAlarmActive) { context.getSharedPreferences("otokreator_prefs", Context.MODE_PRIVATE) }
+                    val alarmHour = remember(isAlarmActive) { prefs.getInt("alarm_time_hour_${post.id}", post.scheduleHour) }
+                    val alarmMinute = remember(isAlarmActive) { prefs.getInt("alarm_time_minute_${post.id}", 0) }
+                    val timeString = if (isAlarmActive) {
+                        "${alarmHour.toString().padStart(2, '0')}:${alarmMinute.toString().padStart(2, '0')} 🔔"
+                    } else {
+                        "${post.scheduleHour.toString().padStart(2, '0')}:00"
+                    }
                     Text(
-                        text = "(${post.scheduleHour.toString().padStart(2, '0')}:00)",
+                        text = "($timeString)",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = if (isAlarmActive) StudioGold else Color.Gray,
+                        fontWeight = if (isAlarmActive) FontWeight.Bold else FontWeight.Normal
                     )
                 }
                 
@@ -1014,6 +1814,38 @@ fun SocialPostCard(
                             fontSize = 9.sp,
                             color = if (post.status == "PUBLISHED") Color(0xFF00FF87) else StudioGold,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = {
+                            if (isAlarmActive) {
+                                viewModel.cancelPostAlarm(context, post)
+                                isAlarmActive = false
+                            } else {
+                                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                    val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                                        context,
+                                        "android.permission.POST_NOTIFICATIONS"
+                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    
+                                    if (hasPermission) {
+                                        showAlarmTimeDialog = true
+                                    } else {
+                                        permissionLauncher.launch("android.permission.POST_NOTIFICATIONS")
+                                    }
+                                } else {
+                                    showAlarmTimeDialog = true
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Setel Alarm",
+                            tint = if (isAlarmActive) StudioGold else Color.Gray,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1079,6 +1911,71 @@ fun SocialPostCard(
                         color = StudioAccent,
                         fontWeight = FontWeight.Medium
                     )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Caption", "${post.caption}\n\n${post.hashtags}")
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Caption & Hashtag disalin! 📝", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StudioCardBg),
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, CardBorderColor, RoundedCornerShape(8.dp)),
+                    contentPadding = PaddingValues(vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.List, contentDescription = "Salin Caption", tint = StudioAccent, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Salin Caption 📝", color = StudioAccent, fontSize = 9.sp)
+                }
+
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Visual Prompt", post.promptUsed)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Visual Prompt disalin! 🎨", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StudioCardBg),
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, CardBorderColor, RoundedCornerShape(8.dp)),
+                    contentPadding = PaddingValues(vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Star, contentDescription = "Salin Prompt", tint = StudioGold, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Salin Prompt 🎨", color = StudioGold, fontSize = 9.sp)
+                }
+
+                Button(
+                    onClick = {
+                        try {
+                            val shareIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, "${post.caption}\n\n${post.hashtags}")
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Bagikan copywriting ke..."))
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Gagal membagikan konten: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StudioCardBg),
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, CardBorderColor, RoundedCornerShape(8.dp)),
+                    contentPadding = PaddingValues(vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = "Bagikan", tint = Color.White, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Bagikan Konten 📲", color = Color.White, fontSize = 9.sp)
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
